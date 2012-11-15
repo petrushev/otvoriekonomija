@@ -1,9 +1,26 @@
+# -*- coding: utf-8 -*-
 
 import os
 from statcrawl import conf, parser
+from operator import itemgetter
 
 ENC = 'cp1251' # encoding of text in datafiles
 VAL_KEYS = parser.VAL_KEYS
+
+TOP_DIMS = {u"година": 'godina',
+            u"регион": 'region',
+            u"варијабли": 'vars',
+            u"општина": 'opstina',
+            u"земја": 'zemja',
+            u"тарифа": 'tarifa',
+            u"пол": 'pol',
+            u"мерка": 'merka',
+            u"сектор на дејност": 'sektor',
+            u"индикатор": 'indikator',
+            u"месец": 'mesec',
+            u"возраст": 'vozrast',
+            u"стапка": 'stapka'}
+
 
 
 def traverse_files():
@@ -13,57 +30,36 @@ def traverse_files():
             yield conf.datapath + '/' + filename
 
 
-def iter_dims(parsed):
-    for key, val in parsed.iteritems():
-        if not key.endswith('_key'): continue
-        yield val, parsed[key[:-4] + '_values']
-
-
-def main():
+def compile_all_dimensions():
+    """Get all dimensions in all stats, along with all their possible values"""
     all_dims = {}
     for file_ in traverse_files():
-        parsed = parser.parse(open(file_).read().decode(ENC), skip_data = True)
-        for dim, vals in iter_dims(parsed):
+        parsed = parser.parse(open(file_).read().decode(ENC), skip_data=True)
+        if 'outter_dim_key' not in parsed: continue
+        for dim, vals in parser.iter_dims(parsed):
             try:
                 all_dims[dim].update(set(vals))
             except KeyError:
                 all_dims[dim] = set(vals)
 
-    int_dims = set()
-    float_dims = set()
-    for dim in all_dims.keys():
-        vals = all_dims[dim]
-        try:
-            new_vals = set(map(int, vals))
-        except ValueError:
-            try:
-                new_vals = set(map(float, vals))
-            except ValueError:
-                # text
-                print dim
-                print ', '.join(vals)
-                pass
+    return all_dims
 
-            else:
-                # floats
-                float_dims.add(dim)
-                all_dims[dim] = new_vals
+def filter_by_dims(dimensions):
+    """Iterate through files and skip any that has dimensions not included in `dimensions`,
+       yields content"""
+    for file_ in traverse_files():
+        content = open(file_).read().decode(ENC)
+        parsed = parser.parse(content, skip_data=True)
 
-        else:
-            # ints
-            int_dims.add(dim)
-            all_dims[dim] = new_vals
+        # skip flat file
+        if 'outter_dim_values' not in parsed: continue
 
-    """
-    dims_ = set()
-    for dim, values in all_dims.iteritems():
-        if len(values) < 10:
-            dims_.add(dim)
+        dims = set(dim for dim, _ in parser.iter_dims(parsed))
+        if len(dims) > len(dims.intersection(dimensions)):
+            # it has some dimensions not specified in arg, skip it
+            continue
 
-
-    for d in sorted(all_dims.keys()):print d
-    print len(all_dims)
-    """
+        yield content
 
 
 
